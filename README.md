@@ -83,14 +83,29 @@ Our framework maintains high coordination success even as the density of randomi
 
 ### Generated Visualizations
 
-All plot figures are saved in the `results/` directory:
-* **`results/scalability_test.png`**: Zero-shot success rates under varying obstacle configurations.
-* **`results/mcts_ablation.png`**: Success rates compared against search-free and heuristic-only baselines.
-* **`results/density_robustness.png`**: Performance under different obstacle densities.
-* **`results/nsearch_sensitivity.png`**: Sensitivity sweep over the MCTS search budget.
-* **`results/beta_sensitivity.png`**: Sensitivity sweep over the heuristic weight $\beta$.
-* **`results/premium_value_surface.png`**: Visualization of the decentralized GNN value landscape.
-* **`results/premium_potential_flow.png`**: Vector field of the coordinated potential flow.
+All plot figures are saved in the `results/` directory and embedded below:
+
+#### 1. Robustness & Generalization (Zero-Shot Scalability)
+![Zero-Shot Scalability](results/scalability_test.png)
+*Illustrates zero-shot success rates under varying obstacle configurations.*
+
+#### 2. MCTS Ablation Study
+![MCTS Ablation](results/mcts_ablation.png)
+*Success rates compared against search-free and heuristic-only baselines.*
+
+#### 3. Obstacle Density Robustness
+![Obstacle Density Robustness](results/density_robustness.png)
+*Performance under different obstacle densities ($M=4$ agents).*
+
+#### 4. Hyperparameter Sensitivity Sweeps
+| MCTS Search Budget ($N_{\text{search}}$) | Heuristic Mixing Weight ($\beta$) |
+| :---: | :---: |
+| ![Search Budget Sensitivity](results/nsearch_sensitivity.png) | ![Heuristic Weight Sensitivity](results/beta_sensitivity.png) |
+
+#### 5. Qualitative Visualizations
+| Decentralized GNN Value Landscape | Coordinated Potential Flow Field |
+| :---: | :---: |
+| ![GNN Value Landscape](results/premium_value_surface.png) | ![Coordinated Potential Flow](results/premium_potential_flow.png) |
 
 ---
 
