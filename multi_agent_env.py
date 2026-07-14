@@ -86,88 +86,91 @@ class MultiAgentNavigationEnv:
 
     def step(self, state, joint_action):
         """
-        Executes all active agents' actions simultaneously.
-        joint_action: tuple of size M containing actions for each agent.
+        Executes all active agents' actions simultaneously with priority-based conflict resolution.
+        Higher priority agents (lower index) move first. Lower priority agents wait if a conflict occurs.
+        If waiting is also blocked, the agent crashes and is deactivated.
+        Inactive agents stay at their current positions and do not cause conflicts.
         Returns: next_state, rewards, done, info
         """
         agent_positions, goal_positions, obstacles_positions, active_mask = state
         
-        next_agent_positions = list(agent_positions)
         next_active_mask = list(active_mask)
         rewards = [0.0] * self.num_agents
+        final_positions = list(agent_positions)
         
-        # 1. Propose next positions for active agents
-        proposed_positions = []
+        # Process agents in priority order (0 to M-1)
         for i in range(self.num_agents):
             if not active_mask[i]:
-                proposed_positions.append(agent_positions[i])
+                # Already inactive agent stays at its current position (which is its goal or crash position)
+                final_positions[i] = agent_positions[i]
                 continue
-            
+                
             r, c = agent_positions[i]
             dr, dc = self.action_vectors[joint_action[i]]
-            nr, nc = r + dr, c + dc
+            pos_i = (r + dr, c + dc)
             
-            # Bound check: if out of bounds, agent stays and gets crash penalty
-            if not self.in_bounds(nr, nc):
-                proposed_positions.append((r, c))
+            # 1. Boundary check
+            if not self.in_bounds(pos_i[0], pos_i[1]):
                 rewards[i] = -1.0
                 next_active_mask[i] = False
-            else:
-                proposed_positions.append((nr, nc))
-
-        # 2. Collision checks (Vertex & Edge)
-        final_positions = list(agent_positions)
-        for i in range(self.num_agents):
-            if not active_mask[i] or not next_active_mask[i]:
+                final_positions[i] = agent_positions[i]
                 continue
-            
-            pos_i = proposed_positions[i]
-            
-            # Static Obstacle Collision
+                
+            # 2. Static obstacle check
             if pos_i in self.obstacles:
                 rewards[i] = -1.0
                 next_active_mask[i] = False
+                final_positions[i] = agent_positions[i]
                 continue
                 
-            # Vertex Collision (Another agent moving to/occupying the same cell)
-            vertex_collision = False
-            for j in range(self.num_agents):
-                if i == j:
-                    continue
-                # If agent j is active and either proposes to go to same spot OR is already parked there and active/inactive
-                if proposed_positions[j] == pos_i:
-                    vertex_collision = True
+            # 3. Conflict checks with other agents
+            conflict = False
+            
+            # A. Vertex conflict with already resolved active agents (0 to i-1)
+            for j in range(i):
+                if next_active_mask[j] and final_positions[j] == pos_i:
+                    conflict = True
                     break
-            
-            if vertex_collision:
-                rewards[i] = -1.0
-                next_active_mask[i] = False
-                continue
-                
-            # Edge Collision (Swapping positions between agent i and j)
-            edge_collision = False
-            for j in range(self.num_agents):
-                if i == j or not active_mask[j]:
-                    continue
-                if proposed_positions[i] == agent_positions[j] and proposed_positions[j] == agent_positions[i]:
-                    edge_collision = True
-                    break
-            
-            if edge_collision:
-                rewards[i] = -1.0
-                next_active_mask[i] = False
-                continue
-                
-            # If no collision, accept proposed position
-            final_positions[i] = pos_i
-            
-            # Goal Check
-            if pos_i == goal_positions[i]:
-                rewards[i] = 1.0
-                next_active_mask[i] = False  # Reached goal safely, deactivate
+                    
+            if not conflict:
+                # B. Swap (edge) conflict with lower-priority active agents (i+1 to M-1)
+                for j in range(i + 1, self.num_agents):
+                    if active_mask[j] and pos_i == agent_positions[j]:
+                        # Check agent j's proposed position
+                        r_j, c_j = agent_positions[j]
+                        dr_j, dc_j = self.action_vectors[joint_action[j]]
+                        pos_j = (r_j + dr_j, c_j + dc_j)
+                        if pos_j == agent_positions[i]:
+                            conflict = True
+                            break
+                            
+            if conflict:
+                # Agent i is forced to wait in its current cell
+                # Check if its current cell conflicts with any already scheduled higher-priority agent
+                stay_conflict = False
+                for j in range(i):
+                    if next_active_mask[j] and final_positions[j] == agent_positions[i]:
+                        stay_conflict = True
+                        break
+                if stay_conflict:
+                    # Cell is claimed, agent i crashes
+                    rewards[i] = -1.0
+                    next_active_mask[i] = False
+                    final_positions[i] = agent_positions[i]
+                else:
+                    # Safe to stay
+                    final_positions[i] = agent_positions[i]
+                    rewards[i] = -0.05
             else:
-                # Step cost
-                rewards[i] = -0.05
+                # No conflict: accept movement
+                final_positions[i] = pos_i
+                
+                # Goal Check
+                if pos_i == goal_positions[i]:
+                    rewards[i] = 1.0
+                    next_active_mask[i] = False
+                else:
+                    rewards[i] = -0.05
 
         # 3. Create next state
         next_state = (

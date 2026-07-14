@@ -83,7 +83,7 @@ class PermutationEquivariantGNN(nn.Module):
         
         # Output heads
         logits_flat = self.policy_head(coordinated_flat) # (B*M, 8)
-        values_flat = self.value_head(coordinated_flat) # (B*M, 1)
+        values_flat = torch.tanh(self.value_head(coordinated_flat)) # (B*M, 1)
         
         # Reshape back to joint outputs
         logits = logits_flat.view(B, M, 8)

@@ -51,12 +51,23 @@ def train_multi_agent():
     optimizer = optim.Adam(model.parameters(), lr=0.0003)
     
     mcts = MultiAgentMCTS(model=model, c_puct=1.4)
-    loss_fn = MultiAgentHeuristicGuidedLoss(beta_start=1.0, beta_decay=0.99, beta_min=0.05, clip_eps=0.2)
+    loss_fn = MultiAgentHeuristicGuidedLoss(beta_start=1.0, beta_decay=0.99, beta_min=0.3, clip_eps=0.2)
 
     success_counts = 0
     total_episodes_evaluated = 0
+    recent_successes = []
+    best_success_rate = 0.0
 
     for ep in range(1, num_episodes + 1):
+        # Randomize obstacles per episode during training to enhance generalization
+        env.obstacles = set()
+        starts_goals = set(env.default_starts + env.default_goals)
+        while len(env.obstacles) < 12:
+            r = np.random.randint(1, 11)
+            c = np.random.randint(1, 11)
+            if (r, c) not in starts_goals:
+                env.obstacles.add((r, c))
+
         state = env.generate_initial_state()
         
         # History buffers for the episode
@@ -139,8 +150,20 @@ def train_multi_agent():
         if reached_goals == num_agents:
             success_counts += 1
             result_str = f"ALL SUCCESS ({reached_goals}/{num_agents})"
+            recent_successes.append(1)
         else:
             result_str = f"PARTIAL (Goal: {reached_goals}, Crash/Timeout: {crashed_agents})"
+            recent_successes.append(0)
+            
+        if len(recent_successes) > 30:
+            recent_successes.pop(0)
+            
+        current_success_rate = sum(recent_successes) / len(recent_successes)
+        if len(recent_successes) >= 20 and current_success_rate > best_success_rate:
+            best_success_rate = current_success_rate
+            os.makedirs("models", exist_ok=True)
+            torch.save(model.state_dict(), "models/multi_agent_model.pth")
+            print(f"--> Saved NEW BEST model checkpoint (Success Rate: {best_success_rate*100:.1f}%)")
 
         # 2. Optimization step
         if states_history:
@@ -170,6 +193,7 @@ def train_multi_agent():
                     active_masks=batch_masks
                 )
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
                 last_loss = loss.item()
                 
@@ -178,13 +202,17 @@ def train_multi_agent():
         else:
             print(f"Episode {ep:02d}/{num_episodes} | Empty episode")
 
-    # Save model weights for visualization and zero-shot experiments
+    # Save final model weights to a separate path to preserve the best checkpoint
     os.makedirs("models", exist_ok=True)
-    save_path = "models/multi_agent_model.pth"
-    torch.save(model.state_dict(), save_path)
+    if best_success_rate == 0.0:
+        torch.save(model.state_dict(), "models/multi_agent_model.pth")
+        print("--> No best model saved during training. Saved final model to models/multi_agent_model.pth")
+    else:
+        torch.save(model.state_dict(), "models/multi_agent_model_final.pth")
+        print(f"--> Saved final model to models/multi_agent_model_final.pth (Best checkpoint success rate was: {best_success_rate*100:.1f}%)")
+        
     print("=============================================================")
-    print(f" Training Completed. Success Rate: {success_counts / num_episodes * 100:.1f}%")
-    print(f" Model weights saved to: {save_path}")
+    print(f" Training Completed. Overall Success Rate: {success_counts / num_episodes * 100:.1f}%")
     print("=============================================================")
 
 if __name__ == "__main__":
